@@ -1,0 +1,682 @@
+---
+title: 'Online Reviews: Empirical Generalizations'
+author: <br><br>Qianyun (Poppy) Zhang <br> <p style="font-size:20px">*Joint work with Prof.Vishal </p>
+output:
+  revealjs::revealjs_presentation:
+    css: slidecss.css
+    theme: default
+    slide_level: 1
+    transition: slide
+    highlight: pygments
+    center: false
+bibliography: review.bib
+
+
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE,message=FALSE)
+```
+
+```{r,message=FALSE}
+#library(sentimentr)
+library(highcharter)
+library(dplyr)
+library(data.table)
+library(plotly)
+library(htmltools)
+library(htmlwidgets)
+library(FactoMineR)
+library(reshape)
+library(plyr)
+library(broom)
+library(caret)
+library(tidyr)
+require(purrr)
+library(ggplot2)
+
+```
+
+
+
+# Consumer Reviews
+
+- Product reviews are considered as one of the most trusted sources by consumers
+
+- Online reviews are important for all stakeholders
+    + Individual Products/Firms (e.g. United Airline, Authors of book)
+    + Platform (e.g. Expedia, Amazon)
+    + Fellow consumers (helps purchase decision)
+    + Review writer (satisfaction of expression, potential revenue source)
+
+
+
+# Empirical Context 
+
+- Online Reviews from several sources
+    + Amazon : 142.8 million reviews, May 1996 - July 2014 
+    + Glassdoor: for all US firms (last scrape July 2016)
+    + IMDB full data (1990 - 2016) 
+    + Yelp: few major cities (global)
+    + Travel: Expedia, Homeaway
+
+
+
+
+# Approach
+
+
+- Broad approach: extract attributes at 3 broad levels
+    + Review (content of the review)
+    + Reviewer (attributes of the writer)
+    + Product (attributes of the product)
+
+
+ 
+ 
+# Approach
+
+ Review                  Reviewer                            Product   
+ -----------------     -----------------------------      -------------------
+ Star Rating            Reviewer Name                       Product Name 
+ Length                 Gender                               Average Rating
+ Text                   Geography                            Price
+ Time                   Total Reviews (heavy/light)          Broad Category
+ Helpfulness                                                 Popularity/Sales
+
+ 
+ 
+![helpfulness](Picture1.png)
+
+
+
+# Summary: number of reviews @ Amazon.com
+
+ 
+```{r}
+labelstyle= list(style = list(fontSize = '18px',color="black"))
+meta<-fread("../metadata/summary.csv")
+cat<-meta[,c("category","n_reviews")]
+cat%>%arrange(-n_reviews)%>%
+  hchart(., "bar", hcaes(x = category, y = n_reviews,color=n_reviews),name="#Reviews")%>%
+  hc_xAxis(title=list(text=""),labels =labelstyle )%>%
+  hc_yAxis(title=list(text=""),labels = labelstyle)%>%hc_tooltip(style=list(fontsize='18pt'))
+```
+
+
+
+
+# Text Mining
+
+- Text features: standard NLP
+
+- Readability 
+
+- Sentiment
+
+
+
+
+# Readability 
+
+- SMOG(Simple Measure of Gobbledygook) 
+<small>years of education a person needs to understand a piece of writing</small> 
+- The Automated Readability Index: 
+<small>ratios of word difficulty  and sentence difficulty </small>
+- Coleman–Liau Index: 
+<small>weighted difference between average number of letters and average number of sentences </small>
+- Flesch readability: 
+<small>average sentence length and average number of syllables per word</small>
+- Cunning-Fog: 
+<small>average sentence length plus percentage of hard(long) words</small>
+- Higher score, lower readability     
+
+
+
+# Non-readability
+
+**Highly correlated in the data**
+```{r}
+load("../data/Sub_book1.RData")#dt_sub
+#save(dt_sub, file="../data/Sub_book1.RData")
+#dt_sub$pos1<-dt_sub$pos/dt_sub$len
+#dt_sub$neg1<-dt_sub$neg/dt_sub$len
+a<-dt_sub[,c(29:34)]
+a<-a[complete.cases(a),]
+M <- cor(a)
+
+#read<-dt_sub[,c(29:34)]
+#out<-PCA(read,scale.unit = TRUE, graph=FALSE)
+#c<-data.frame(out$ind$coord)[,1:2]
+#colnames(c)<-c("read1","read2")
+hchart(M)
+
+```
+
+
+
+# Female Reviews are more Readable
+
+```{r}
+dt<-fread("../grid_result/book.csv",showProgress=FALSE)
+dt$star<-as.factor(dt$star)
+dt <- within(dt, star <- relevel(star, ref = 3))
+
+dt1 <- dt %>% dplyr::group_by(gender, length_quint) %>% nest()
+m<-readability~star
+g1 <- function(df) {lm(m, data=df)}
+
+#m1 <- dt1 %>% mutate(model=data %>% map(g1))
+#r1 <- m1 %>% mutate(tidy = model %>% map(tidy))
+#ru1 <- unnest(r1, tidy) 
+
+
+#ru1<-ru1[ru1$term!="(Intercept)",]
+
+f<- list(family = "serif", size = 18,color = "#000000")
+x <- list( title = "", tickfont = f )
+y <- list( title = "", tickfont = f)
+
+
+
+ru1<-dt%>%dplyr::group_by(gender, length_quint,star)%>%
+  dplyr::summarise(estimate=mean(readability,na.rm=TRUE),std.error=sd(readability,na.rm=TRUE))%>%
+  mutate(term=as.character(star))
+
+ru1<-ru1[ru1$gender!="",]
+## Recoding ru1$star
+ru1$star <- as.character(ru1$star)
+ru1$star[ru1$star == "3"] <- "3-star"
+ru1$star[ru1$star == "1"] <- "1-star"
+ru1$star[ru1$star == "2"] <- "2-star"
+ru1$star[ru1$star == "4"] <- "4-star"
+ru1$star[ru1$star == "5"] <- "5-star"
+
+## Reordering ru1$star
+ru1$star <- factor(ru1$star, levels=c("1-star", "2-star", "3-star", "4-star", "5-star"))
+
+fig <- (lapply(split(ru1, ru1$length_quint), function(ru1) {
+  
+plot_ly(data = ru1, x = ~star, y = ~estimate, width=900, height=500, type = 'scatter', mode = 'line+markers', name = 'Length',color = ~gender, colors=c('#AB82FF','#575757'),showlegend=FALSE,
+        error_y = ~list(value = std.error, color = '#000000')) %>%
+  layout(autosize = F, margin = list(b = 150),legend= list(font=list(size=14)),xaxis=x,yaxis=y)
+
+}))
+
+t1 <- subplot(nrows = 1, fig[c(1,3,5)], shareY = TRUE,shareX = TRUE) %>%
+  layout(title ="Very Short                               Mid                                      Very Long", font = t)
+
+tags$div( tags$br(),
+  tags$div(class="header", checked=NA, style=" text-align: center;",
+               tags$h5("Female",style="color:#AB82FF; font-size:20px;display: inline-block;" ),
+               tags$h5(" Male",style="color:#575757;  font-size:20px;display: inline-block;" )
+    ),
+  tags$div(t1,  style = "width: 100%; padding: 1em; ")) %>% browsable()
+
+```
+
+
+# Sentiment
+
+- Valence shifter
+    + We follows the approach developed in Rinker, T. W. (2017)
+    + Amplifier generally increase the polarity of the sentiment words and negator flip the sign; pause punctutation, such as semicolon, and adversative conjunctions, such as "but", also shift the tone 
+    + Shifter accounts for around 20% words in Trump tweet and Austen's books 
+    + Average sentiment and sd. sentiment; sentence level
+  
+![sentiment example](senti_example.PNG)
+
+
+
+# Average Sentiment by Star Rating & Length of Review 
+
+```{r}
+## Recoding dt$length_quint into dt$length_quint_rec
+dt$length_quint_rec <- dt$length_quint
+dt$length_quint_rec[dt$length_quint == "q3"] <- "Mid"
+dt$length_quint_rec[dt$length_quint == "q1"] <- "VeryShort"
+dt$length_quint_rec[dt$length_quint == "q4"] <- "Long"
+dt$length_quint_rec[dt$length_quint == "q2"] <- "Short"
+dt$length_quint_rec[dt$length_quint == "q5"] <- "VeryLong"
+## Reordering dt$length_quint_rec into dt$length_quint_rec_rec
+dt$length_quint_rec <- factor(dt$length_quint_rec, levels=c("VeryShort", "Short", "Mid", "Long", "VeryLong"))
+
+d<-dt%>%
+  dplyr::filter(!is.na(length_quint_rec))%>%
+  dplyr::group_by(star,length_quint_rec )%>%
+  dplyr::summarise(ave=round(mean(avg_senti,na.rm=TRUE),2),
+                   ave1=round(mean(std_senti,na.rm=TRUE), 2))
+
+d$star<-as.character(d$star)
+hchart(d, "column", hcaes(x = length_quint_rec, y = ave,  group = star))%>%
+  hc_yAxis(title = list(text = "Avg. Sentiment"),
+            labels =labelstyle, ymin=-.2, ymax=.3)%>%
+  hc_xAxis(title = list(text = ""),labels =labelstyle,category=dt$length)%>%
+  hc_colors(c("#A8A8A8", "#6E6E6E", "#EEAEEE", "#A020F0", "#7D26CD"))%>%
+  hc_legend(enabled = TRUE) %>%
+  hc_add_theme(hc_theme_tufte())
+```
+
+
+# Deviation in the sentiment
+
+```{r}
+fig <- (lapply(split(d, d$length_quint_rec), function(d) {
+  
+  d<-d%>%arrange(.,star)
+hchart(d, "line", hcaes(x = star, y = ave1))%>%
+  hc_yAxis(title = list(text = ""),labels =labelstyle)%>%
+  hc_xAxis(title = list(text = ""),labels =labelstyle)%>%
+  hc_legend(enabled = FALSE) %>%
+  hc_title(text=unique(d$length_quint_rec))
+
+}))
+
+hw_grid(fig[c(1,3,5)], rowheight = 600, ncol =3)  %>% browsable()
+
+```
+
+
+# Research Question
+
+- What makes a review helpful?
+- Syntactic and Semantic Gender differences in Review Writing 
+- Someone is Watching: Impact of Amazon's Policy Change on Reviews
+
+- Today: <font color="red">**What makes a review helpful?**</font>
+
+
+
+# Summary: mean helpfulness
+
+```{r}
+
+summary<-fread("../grid_result/summary.csv")
+summary$Var1<-NULL
+require(tidyr)
+helpful<-summary%>%filter(Var2=="helpful"|Var2=="total")%>% 
+  separate(Freq, into = paste("v", 1:2, sep = ":"))
+helpful<-helpful%>%filter(`v:1`=='Mean')
+helpful<-spread(helpful,key=Var2,value=`v:2`)
+helpful$helpful<-as.numeric(helpful$helpful)
+helpful$total<-as.numeric(helpful$total)
+helpful$meanper<-round(helpful$helpful/helpful$total,2)*100
+
+helpful<-helpful%>%dplyr::arrange(.,category,meanper)
+helpful$category <- factor(helpful$category, levels = unique(helpful$category)[order(helpful$meanper, decreasing = TRUE)])
+
+labelstyle= list(style = list(fontSize = '18px',color="black"))
+helpful%>%arrange(meanper)%>%
+  hchart(., "bar", hcaes(x = category, y = meanper,color=meanper),name="Avg(helpful)")%>%
+  hc_xAxis(title=list(text=""),labels =labelstyle )%>%
+  hc_yAxis(title=list(text=""),labels = labelstyle)%>%
+  hc_tooltip(valueSuffix='%',style=list(fontSize= "18px"),headerFormat= '<span style="font-size: 18px">{point.key}</span><br/>')
+```
+
+
+
+
+# What makes a review helpful? 
+
+**Star Rating**
+
+- Imagine the average rating for a product is 4.5, which review do you think is more helpful? 1 star, 3 star or 5 star? 
+
+- "There is a general bias, based on both innate predispositions and experience, in animals and humans, to give greater weight to negative entities (e.g., events, objects, personal traits)" Rozin & Royzman (2011)
+
+
+
+
+
+# Star Rating and Helpfulness
+
+```{r,message=FALSE, echo=FALSE}
+
+dt<-dt[dt$gender!="either",] 
+dt1 <- dt %>% dplyr::group_by(gender, length_quint) %>% nest()
+m<-helpful_per~star
+g1 <- function(df) {lm(m, data=df)}
+
+m1 <- dt1 %>% mutate(model=data %>% map(g1))
+r1 <- m1 %>% mutate(tidy = model %>% map(tidy))
+ru1 <- unnest(r1, tidy) 
+
+ru1<-ru1[ru1$term!="(Intercept)",]
+ru1<-ru1[ru1$gender!="",]
+f<- list(family = "serif", size = 18,color = "#000000")
+x <- list( title = "", tickfont = f,tickangle = 90 )
+y <- list( title = "", tickfont = f)
+
+
+fig <- (lapply(split(ru1, ru1$length_quint), function(ru1) {
+  title<-unique(ru1$length_quint)
+  
+plot_ly(data = ru1, x = ~term, y = ~estimate, width=900, height=500, type = 'scatter',mode='line', name = 'StarRating',color = ~gender, colors=c('#AB82FF','#575757'),showlegend=FALSE,
+        error_y = ~list(value = std.error, color = '#000000')) %>%
+  layout(autosize = F, height = 600,margin = list(b = 150),legend= list(font=list(size=18)),xaxis=x,yaxis=y)
+
+}))
+
+t1 <- subplot(nrows = 1, fig[c(1,3,5)], shareX = TRUE, shareY = TRUE) %>%
+  layout(title ="Very Short                               Mid                                      Very Long", font = t)
+
+tags$div( tags$br(),style=" text-align: center;width:100%;",
+  tags$div(class="header", checked=NA, style=" text-align: center;",
+               tags$h5("Female",style="color:#AB82FF; font-size:20px;display: inline-block;" ),
+               tags$h5(" Male",style="color:#575757;  font-size:20px;display: inline-block;" )
+    ),
+  tags$div(t1,  style = "width: 100%; padding: 1em; ")) %>% browsable()
+
+
+```
+
+
+
+
+
+
+# Higher Star rating, higher helpfulness
+
+```{r}
+coef<-fread("../grid_result/coef.csv")
+coef$category<-gsub("_"," ", coef$category)
+coef$estimate<-round(coef$estimate,3)
+coef<-coef%>%filter(category!= "Musical Instruments"&category!= "Apps for Android")
+
+d<-'star'
+
+labelstyle= list(style = list(fontSize = '22px',color="black"))
+
+
+
+t<-coef%>%filter(grepl(d,term))%>%group_by(term)%>%dplyr::arrange(.,term,estimate)
+t$term1<-gsub(d, '', t$term)
+t$category <- factor(t$category, levels = unique(t$category)[order(t$estimate, decreasing = TRUE)])
+
+
+
+hchart(t, width=900,"line", hcaes(x = term1, y = estimate, group = category))%>% 
+  hc_legend(align='right',layout='vertical',itemStyle=list(fontSize="15px", fontWeight="bold"))%>%
+  hc_yAxis(plotLines = list(list( value = 0,  color = 'grey',
+  width = 2,  zIndex = 4)),labels =labelstyle,title=list(text="",style=labelstyle))%>%
+  hc_xAxis(title=list(text="",style=labelstyle),labels =labelstyle)%>%
+  hc_tooltip(crosshairs = FALSE,shared = FALSE, borderWidth = 5,
+             style=list(fontSize= "18px"),headerFormat= '<span style="font-size: 18px">{point.key}</span><br/>')
+
+
+
+```
+
+
+# Generalzation Method
+
+- Product has at least 5 reviews; review has at least 5 votes; before 2014
+
+- Relative star: absolute above 0.5 
+
+- All other numeric variables are scaled to mean 0
+
+- Processing on HPC clusters at Stern 
+
+- <font color="red"> helpfulness=ReviewLevel+ReviewerLevel+ProductLevel </font>
+      
+
+
+
+
+
+# Longer review is more helpful 
+
+```{r}
+
+d<-'length_quintq'
+t<-coef%>%filter(grepl(d,term))%>%group_by(term)%>%dplyr::arrange(.,term,estimate)
+t$term1<-gsub(d, '', t$term)
+t$category <- factor(t$category, levels = unique(t$category)[order(t$estimate, decreasing = TRUE)])
+
+
+t$length_quint_rec[t$term == "length_quintq1"] <- "VeryShort"
+t$length_quint_rec[t$term == "length_quintq4"] <- "Long"
+t$length_quint_rec[t$term == "length_quintq2"] <- "Short"
+t$length_quint_rec[t$term == "length_quintq5"] <- "VeryLong"
+## Reordering dt$length_quint_rec into dt$length_quint_rec_rec
+t$length_quint_rec <- factor(t$length_quint_rec, levels=c("VeryShort", "Short", "Long", "VeryLong"))
+
+hchart(t, width=900,"line", hcaes(x = length_quint_rec, y = estimate, group = category))%>% 
+  hc_legend(align='right',layout='vertical',itemStyle=list(fontSize="15px", fontWeight="bold"))%>%
+  hc_yAxis(plotLines = list(list( value = 0,  color = 'grey',
+  width = 2,  zIndex = 4)),labels =labelstyle,title=list(text="",style=labelstyle))%>%
+  hc_xAxis(title=list(text="",style=labelstyle),labels =labelstyle)%>%
+  hc_tooltip(crosshairs = FALSE,shared = FALSE, borderWidth = 5,
+             style=list(fontSize= "18px"),headerFormat= '<span style="font-size: 18px">{point.key}</span><br/>')
+
+
+```
+
+
+
+# Mixed: Non-readability 
+
+```{r}
+
+t<-'readability_scale'
+plot<-function(d){
+f<- list(family = "serif", size = 18,color = "#000000")
+x <- list( title = "", tickfont = f,tickangle = 90 )
+y <- list( title = "", tickfont = f)
+
+
+read<-coef%>%filter(term==t)%>%group_by(term)%>%dplyr::arrange(.,term,estimate)
+read$category <- factor(read$category, levels = unique(read$category)[order(read$estimate, decreasing = TRUE)])
+
+plot_ly(data = read, x = ~category, y = ~estimate,  name = '',color= ~ as.factor(estimate),
+        error_y = ~list(value = std.error, color = '#000000'),showlegend=FALSE)%>%
+  layout(autosize = F, width = 800, height = 500,margin = list(b = 150), xaxis =x,yaxis =y)
+}
+plot(t)
+
+```
+
+
+
+# Positive Reviews is more helpful
+
+```{r}
+
+t<-'avg_senti_scale'
+
+plot(t)
+
+```
+
+
+# Deviation in sentiment is more helpful
+
+```{r}
+
+t<-'std_senti_scale'
+
+plot(t)
+
+```
+
+
+# First review is more helpful
+```{r}
+
+t<-'sequencefirst'
+
+plot(t)
+
+```
+
+
+# Review for product with high variance in rating is more helpfulness
+```{r}
+
+t<-'score_variance_scale'
+
+plot(t)
+
+```
+
+
+
+# Review for products with a lot reviews is less helpful
+
+```{r}
+
+d<-'total_reviews_product_quintq'
+t<-coef%>%filter(grepl(d,term))%>%group_by(term)%>%dplyr::arrange(.,term,estimate)
+t$term1<-gsub(d, '', t$term)
+t$category <- factor(t$category, levels = unique(t$category)[order(t$estimate, decreasing = TRUE)])
+
+
+t$length_quint_rec[t$term == "total_reviews_product_quintq1"] <- "VeryFew"
+t$length_quint_rec[t$term == "total_reviews_product_quintq2"] <- "Few"
+t$length_quint_rec[t$term == "total_reviews_product_quintq4"] <- "Many"
+t$length_quint_rec[t$term == "total_reviews_product_quintq5"] <- "ManyMany"
+## Reordering dt$length_quint_rec into dt$length_quint_rec_rec
+t$length_quint_rec <- factor(t$length_quint_rec, levels=c("VeryFew", "Few", "Many", "ManyMany"))
+
+
+hchart(t, width=900,"line", hcaes(x = length_quint_rec, y = estimate, group = category))%>% 
+  hc_legend(align='right',layout='vertical',itemStyle=list(fontSize="15px", fontWeight="bold"))%>%
+  hc_yAxis(plotLines = list(list( value = 0,  color = 'grey',
+  width = 2,  zIndex = 4)),labels =labelstyle,title=list(text="",style=labelstyle))%>%
+  hc_xAxis(title=list(text="",style=labelstyle),labels =labelstyle)%>%
+  hc_tooltip(crosshairs = FALSE,shared = FALSE, borderWidth = 5,
+             style=list(fontSize= "18px"),headerFormat= '<span style="font-size: 18px">{point.key}</span><br/>')
+
+```
+
+
+
+
+# Deviance from overall rating is less helpful 
+
+
+```{r}
+
+t<-'score_relative1neg'
+d<-'score_relative1pos'
+
+f<- list(family = "serif", size = 18,color = "#000000")
+x <- list( title = "", tickfont = f,tickangle = 90 )
+y <- list( title = "", tickfont = f)
+
+read1<-coef%>%filter(grepl(d,term))%>%group_by(term)%>%dplyr::arrange(.,term,estimate)
+read1<-read1%>%filter(category!= "Musical Instruments")
+read1$category <- factor(read1$category, levels = unique(read1$category)[order(read1$estimate, decreasing = TRUE)])
+read<-coef%>%filter(grepl(t,term))%>%group_by(term)%>%dplyr::arrange(.,term,estimate)
+read<-read%>%filter(category!= "Musical Instruments")
+read$category <- factor(read$category, levels = unique(read$category)[order(read$estimate, decreasing = TRUE)])
+read<-merge(read, read1, by="category")
+
+plot_ly(data = read, x = ~category, y = ~estimate.x, type = 'bar', name = 'Negative',marker = list(color="#DF3D82"),
+        error_y = ~list(value = std.error.x, color = '#000000')) %>%
+  add_trace( y = ~estimate.y, name = 'Positive',error_y = ~list(value = std.error.y, color = '#000000'),marker = list(color="#C1E1A6"))%>%
+  layout(autosize = F, width = 1000, height = 600,margin = list(b = 150), xaxis =x,yaxis =y,legend= list(font=list(size=18)))
+
+
+```
+
+
+
+# TODO
+
+- Generalization of review helpful to broad specturm of categories
+- Additional reviewer attributes
+- Additional text attributes
+- Controlling for product effects
+- Explore interactions
+
+
+
+
+# End. 
+
+Thank you
+
+(let's dance) 
+
+![](https://media.giphy.com/media/hRAmdtU6kuwTu/giphy.gif ){ width=80% }
+
+
+
+# Literature
+
+- Star rating 
+    + Higher star rating leads to higher helpfulness
+    + Deviation also leads to lower helpfulness
+     <small>(@chen2008; @Mudambi2010; @Pan2011; @Racherla2012; @Baek2012; @Filieri2015)</small>
+    + Confirmation bias 
+    
+. . .
+
+
+- Review Length 
+    + Longer review is more helpful 
+    <small>(@Mudambi2010; @Pan2011; @Racherla2012; @Baek2012)</small>
+    + Longer reviews embed more and deeper information 
+
+
+
+
+
+# Literature
+<font color="red">Mixed findings</font>
+
+- Readability
+    + Grade or vocabulary level needed to understand certain text corpus
+    + Some studies found readability has no or little marginal effect 
+    <small>(@Hu2012; @Korfiatis2012)</small>
+    + Some studies found higher readability higher helpfulness 
+    <small>(@AnindyaGhose2010)</small>
+
+. . .
+
+
+- Popularity of products 
+    + Higher popularity leads to lower helpfulness 
+    <small>(@Mudambi2010)</small>
+    + Higher popularity leads to higher helpfulness 
+    <small>(@AnindyaGhose2010; @Baek2012)</small>
+
+
+    
+
+# Literature
+
+- Product Category
+    + Reviews for search products are more helpful than experienced products 
+    <small>(@Baek2012)</small>
+    + Product Category can moderate the effect of review length and review rating 
+    <small>(@Mudambi2010; @Korfiatis2012)</small>
+
+
+
+# Literature: Summary
+
+>- Modelled only some of the factors, not all of them 
+
+>- Mostly used categories: 
+DVD, cameras, MP3 palyers, softwares, cellphones, printers, movies
+
+>- Mostly focused on one fraction in time
+
+>- Constraints of data: 
+Amazon has very good anti-scraping protection
+Very hard to maintain and analyze 150 million reviews  
+
+# Readability
+
+
+Publishing while Female: Gender Differences in Peer Review Scrutiny
+Erin Hengel 2017
+
+
+
+# Reference 

@@ -1,0 +1,18 @@
+.slides .header{
+  position:absolute;
+  top: -50%;
+  left: -50%;
+  font-size: 20 px;
+}
+.slides .footer{
+  position: fixed; 
+  font-size: 50%; 
+  bottom: 0.01em;
+  text-align: left;
+  vertical-align: bottom;
+}
+
+h1 {
+
+	font-size: 17px;
+}
