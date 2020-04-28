@@ -8,4 +8,10 @@ What's the gender differences in consumer reviews?
 ## Method
 Using large datasets such as Amazon reviews, IMDB reviews and glassdoor reviews, we analyze the helpfulness of reviews by review length, review star and characteristics of the reviewers. 
 
+
+## Results
 All analysis is done by using R and text mining packages. The results are presented using R markdown. 
+
+![](/firstreview_helpful.PNG)
+
+![](/reviews_helpful_amazon.PNG)
